@@ -90,7 +90,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             users[user_id]["step"] = "done"
             save_data()
 
-            summary = "خلاصه رزرو شما:\n"
+            summary = "Kholase:\n"
             for d, m in users[user_id]["data"]["choices"].items():
                 summary += f"- {d}: {m}\n"
 
