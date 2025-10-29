@@ -2,7 +2,7 @@ import telebot
 from telebot import types
 
 # 🔹 توکن ربات خودت رو از BotFather اینجا بنویس
-TOKEN = "TOKEN_INJA_NEVESHTE_SHAVAD"
+TOKEN = "8369904289:AAHciZcymmqwXZdkDMdC9schZsk5gGUVGTQ"
 
 bot = telebot.TeleBot(TOKEN)
 
