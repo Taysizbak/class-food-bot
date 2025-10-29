@@ -70,8 +70,10 @@ def choose_meal(message):
 def show_summary(message):
     choices = user_data[message.chat.id].get('choices', {})
     summary = "Summary of your selections:"
-    for day, meals in choices.items():
-        summary += f"📅 {day}: {', '.join(meals)}
+    for day in days:
+    meals = choices.get(day, [])
+    if meals:  # فقط روزهایی که انتخاب شده
+        summary += f"{day}: {', '.join(meals)}\n"
 "
     bot.send_message(message.chat.id, summary)
     bot.send_message(message.chat.id, u"✅ ثبت نهایی انجام شد. ممنون 🌸")
