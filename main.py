@@ -69,7 +69,7 @@ def choose_meal(message):
 
 def show_summary(message):
     choices = user_data[message.chat.id].get('choices', {})
-    summary = "kholase"
+    summary = "Summary of your selections:"
     for day, meals in choices.items():
         summary += f"📅 {day}: {', '.join(meals)}
 "
