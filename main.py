@@ -1,115 +1,164 @@
-# -*- coding: utf-8 -*-
-import telebot
-from telebot import types
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+import json
 import os
 
-# 🔹 گرفتن توکن از Environment Variables
-TOKEN = os.environ.get("TOKEN")
-bot = telebot.TeleBot(TOKEN)
+DATA_FILE = "data.json"
 
-# ✅ آیدی عددی ادمین‌ها
-ADMIN_IDS = [7498956077]
+users = {}
+admins = set()
 
-# دیکشنری برای ذخیره انتخاب‌های کاربران
-user_data = {}
+# ------------------ مدیریت فایل داده ------------------
+def load_data():
+    global users, admins
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            users = data.get("users", {})
+            admins = set(data.get("admins", []))
 
-# روزهای هفته (شنبه تا پنج‌شنبه)
-days = ["شنبه", "یک‌شنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج‌شنبه"]
+def save_data():
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump({"users": users, "admins": list(admins)}, f, ensure_ascii=False, indent=2)
 
-# شروع ربات
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.send_message(message.chat.id, u"سلام! لطفاً نام و نام خانوادگی خود را وارد کنید 👇")
-    bot.register_next_step_handler(message, get_name)
+# ------------------ شروع ربات ------------------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    users[user_id] = {"step": "name", "data": {}}
+    save_data()
+    await update.message.reply_text(
+        "به ربات رزرو غذای موسسه سلامت خوش آمدید.\n\nلطفاً نام و نام خانوادگی خود را وارد کنید:"
+    )
 
-def get_name(message):
-    name = message.text.strip()
-    user_data[message.chat.id] = {'name': name, 'choices': {}}
-    show_day_menu(message)
+# ------------------ دریافت نام ------------------
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    text = update.message.text.strip()
 
-def show_day_menu(message):
-    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-    for day in days:
-        markup.add(day)
-    markup.add(u"پایان ✅")
-    bot.send_message(message.chat.id, u"روز مورد نظر برای انتخاب غذا را بزن 👇", reply_markup=markup)
-    bot.register_next_step_handler(message, choose_day)
-
-def choose_day(message):
-    day = message.text.strip()
-    if day == u"پایان ✅":
-        show_summary(message)
-        return
-    if day not in days:
-        bot.send_message(message.chat.id, u"روز نامعتبر است ❌ لطفاً یکی از روزهای هفته را انتخاب کنید.")
-        show_day_menu(message)
-        return
-    user_data[message.chat.id]['current_day'] = day
-    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-    markup.add(u"ناهار 🍛", u"شام 🍲", u"هردو ✅")
-    bot.send_message(message.chat.id, f"برای {day} چه غذایی می‌خوای؟", reply_markup=markup)
-    bot.register_next_step_handler(message, choose_meal)
-
-def choose_meal(message):
-    choice = message.text.strip()
-    day = user_data[message.chat.id]['current_day']
-    if u"هردو" in choice:
-        user_data[day] = [u"ناهار", u"شام"]
-        user_data[message.chat.id]['choices'][day] = [u"ناهار", u"شام"]
-    elif u"ناهار" in choice:
-        user_data[message.chat.id]['choices'][day] = [u"ناهار"]
-    elif u"شام" in choice:
-        user_data[message.chat.id]['choices'][day] = [u"شام"]
-    else:
-        bot.send_message(message.chat.id, u"لطفاً یکی از گزینه‌های مشخص‌شده را انتخاب کنید ❌")
-        choose_day(message)
-        return
-    bot.send_message(message.chat.id, f"✅ انتخاب برای {day} ثبت شد!")
-    show_day_menu(message)
-
-def show_summary(message):
-    choices = user_data[message.chat.id].get('choices', {})
-    summary = "Summary of your selections:"
-    for day in days:
-    meals = choices.get(day, [])
-    if meals:  # فقط روزهایی که انتخاب شده
-        summary += f"{day}: {', '.join(meals)}\n"
-    bot.send_message(message.chat.id, summary)
-    bot.send_message(message.chat.id, u"✅ ثبت نهایی انجام شد. ممنون 🌸")
-
-# دستور فقط ادمین برای دیدن کل لیست
-@bot.message_handler(commands=['list'])
-def full_list(message):
-    if message.chat.id not in ADMIN_IDS:
-        bot.send_message(message.chat.id, u"⛔️ فقط ادمین‌ها می‌توانند این دستور را اجرا کنند.")
+    if user_id not in users:
+        await update.message.reply_text("برای شروع، دستور /start را بزنید.")
         return
 
-    if not user_data:
-        bot.send_message(message.chat.id, u"فعلاً هیچ کاربری انتخابی ثبت نکرده 💤")
+    step = users[user_id]["step"]
+
+    # گام ۱: دریافت نام
+    if step == "name":
+        users[user_id]["data"]["name"] = text
+        users[user_id]["data"]["term"] = "ترم دو پرستاری"
+        users[user_id]["step"] = "day_selection"
+        save_data()
+
+        days = [["شنبه", "یک‌شنبه"], ["دوشنبه", "سه‌شنبه"], ["چهارشنبه", "پنج‌شنبه"], ["جمعه"]]
+        markup = ReplyKeyboardMarkup(days, one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text("روز مورد نظر برای رزرو را انتخاب کنید:", reply_markup=markup)
+
+    # گام ۲: انتخاب روز
+    elif step == "day_selection":
+        users[user_id]["data"]["current_day"] = text
+        users[user_id]["step"] = "meal_selection"
+        save_data()
+
+        meals = [["ناهار", "شام"], ["هر دو"]]
+        markup = ReplyKeyboardMarkup(meals, one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text(f"برای {text} کدام وعده را می‌خواهید؟", reply_markup=markup)
+
+    # گام ۳: انتخاب وعده
+    elif step == "meal_selection":
+        day = users[user_id]["data"]["current_day"]
+        meal = text
+        if "choices" not in users[user_id]["data"]:
+            users[user_id]["data"]["choices"] = {}
+        users[user_id]["data"]["choices"][day] = meal
+
+        users[user_id]["step"] = "next_action"
+        save_data()
+
+        markup = ReplyKeyboardMarkup([["انتخاب روز دیگر"], ["پایان رزرو"]], resize_keyboard=True)
+        await update.message.reply_text("انتخاب شما ثبت شد. می‌خواهید ادامه دهید یا رزرو را تمام کنید؟", reply_markup=markup)
+
+    # گام ۴: ادامه یا پایان
+    elif step == "next_action":
+        if text == "انتخاب روز دیگر":
+            users[user_id]["step"] = "day_selection"
+            save_data()
+
+            days = [["شنبه", "یک‌شنبه"], ["دوشنبه", "سه‌شنبه"], ["چهارشنبه", "پنج‌شنبه"], ["جمعه"]]
+            markup = ReplyKeyboardMarkup(days, one_time_keyboard=True, resize_keyboard=True)
+            await update.message.reply_text("روز بعدی را انتخاب کنید:", reply_markup=markup)
+
+        elif text == "پایان رزرو":
+            users[user_id]["step"] = "done"
+            save_data()
+
+            summary = "خلاصه رزرو شما:\n"
+            for d, m in users[user_id]["data"]["choices"].items():
+                summary += f"- {d}: {m}\n"
+
+            await update.message.reply_text(summary + "\nرزرو شما با موفقیت ثبت شد. سپاس از همکاری شما.")
+        else:
+            await update.message.reply_text("گزینه نامعتبر است. لطفاً از دکمه‌ها استفاده کنید.")
+
+# ------------------ نمایش فهرست برای ادمین ------------------
+async def list_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    if user_id not in admins:
+        await update.message.reply_text("فقط ادمین‌ها می‌توانند فهرست را ببینند.")
         return
 
-    text = u"📋 لیست انتخاب‌های کل کلاس:
-
-"
-    for uid, info in user_data.items():
-        text += f"👤 {info['name']}:
-"
-        for day, meals in info.get('choices', {}).items():
-            text += f"  • {day}: {', '.join(meals)}
-"
-        text += "
-"
-    bot.send_message(message.chat.id, text)
-
-# دستور /reset فقط برای ادمین
-@bot.message_handler(commands=['reset'])
-def reset_data(message):
-    if message.chat.id not in ADMIN_IDS:
-        bot.send_message(message.chat.id, u"⛔️ فقط ادمین می‌تواند این دستور را اجرا کند.")
+    if not users:
+        await update.message.reply_text("هیچ رزروی ثبت نشده است.")
         return
-    user_data.clear()
-    bot.send_message(message.chat.id, u"✅ همه انتخاب‌ها پاک شد. آماده هفته‌ی جدید هستیم!")
-    bot.send_message(message.chat.id, u"همه‌ی دانش‌آموزان لطفاً دوباره /start را بزنید و انتخاب غذا را انجام دهید 🍽")
 
-print("ربات در حال اجراست...")
-bot.infinity_polling()
+    msg = "فهرست رزروها:\n\n"
+    for uid, info in users.items():
+        if "data" not in info or "choices" not in info["data"]:
+            continue
+        name = info["data"].get("name", "نامشخص")
+        msg += f"نام: {name}\n"
+        for d, m in info["data"]["choices"].items():
+            msg += f"  {d}: {m}\n"
+        msg += "\n"
+
+    await update.message.reply_text(msg)
+
+# ------------------ افزودن ادمین ------------------
+async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("مثال: /addadmin 123456789")
+        return
+
+    admin_id = context.args[0]
+    admins.add(admin_id)
+    save_data()
+    await update.message.reply_text(f"کاربر {admin_id} به عنوان ادمین اضافه شد.")
+
+# ------------------ ریست داده‌ها ------------------
+async def reset_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    if user_id not in admins:
+        await update.message.reply_text("فقط ادمین‌ها می‌توانند داده‌ها را ریست کنند.")
+        return
+
+    for uid in users:
+        users[uid]["step"] = "name"
+        users[uid]["data"] = {}
+    save_data()
+    await update.message.reply_text("تمام رزروها ریست شد. کاربران می‌توانند دوباره رزرو کنند.")
+
+# ------------------ اجرای ربات ------------------
+def main():
+    load_data()
+    TOKEN = "توکن_ربات_خودت_را_اینجا_بگذار"
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("list", list_all))
+    app.add_handler(CommandHandler("addadmin", add_admin))
+    app.add_handler(CommandHandler("reset", reset_data))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("ربات فعال است...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
