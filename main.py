@@ -1,88 +1,84 @@
 import logging
 import os
+import asyncio
 from telegram import Update
-# ما ContextTypes را به طور خاص برای نوع‌دهی (Type Hinting) ایمپورت می‌کنیم
 from telegram.ext import (
-    Application, 
-    CommandHandler, 
-    MessageHandler, 
-    filters, 
-    ContextTypes
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    ConversationHandler, # در صورت استفاده از مکالمات چند مرحله ای
 )
 
-# --- ۱. تنظیمات اولیه ---
-# اطمینان از وجود توکن از محیط Render
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-
-# تنظیم لاگ برای دیباگ کردن بهتر
+# --- تنظیمات اولیه ---
+# تنظیم لاگ برای مشاهده دقیق‌تر جزئیات در محیط Render
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+# --- تعریف وضعیت‌های مکالمه (اگر از ConversationHandler استفاده می کنید) ---
+# اگر از ربات ساده استفاده می کنید، این بخش را می توانید نادیده بگیرید.
+RESERVATION_FLOW, FOOD_CHOICE, CONFIRMATION = range(3) 
 
-# --- ۲. توابع هندلر (Handler Functions) ---
-# تمام توابع هندلر باید با 'async' تعریف شوند و ContextTypes را بپذیرند.
+# --- توابع هندلر (Handler Functions) ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """پاسخ به دستور /start و استفاده از سینتکس مدرن."""
+    """هندلر برای دستور /start"""
     user = update.effective_user
+    logger.info(f"دستور /start توسط {user.first_name} اجرا شد.")
     await update.message.reply_html(
-        f"سلام {user.mention_html()}! ربات شما با استفاده از Application Builder با موفقیت اجرا شد.",
-        # این خط اطمینان می‌دهد که از جدیدترین قابلیت‌های API استفاده می‌شود
-        # reply_markup=ForceReply(selective=True), 
+        f"سلام {user.mention_html()}! ربات رزرو غذا آماده به کار است.",
+        # اگر ربات پیچیده تری می خواهید، می توانید اینجا دکمه های شروع را اضافه کنید.
     )
+    # return RESERVATION_FLOW # اگر می خواهید بلافاصله وارد مکالمه شوید
 
-async def handle_all_text_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """این تابع جایگزین منطق اصلی شما برای پاسخ به پیام‌ها می‌شود."""
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """هندلر برای دستور /help"""
+    await update.message.reply_text("برای شروع، دستور /start را ارسال کنید.")
+
+# --- تابع اصلی برنامه ---
+
+async def main() -> None:
+    """نقطه ورود اصلی برنامه و اجرای پولینگ."""
     
-    # *** این قسمت را با منطق ربات خود جایگزین کنید ***
-    # مثال: اگر پیام حاوی متن است، آن را تکرار کنید
-    if update.message and update.message.text:
-        received_text = update.message.text
-        logger.info(f"پیام دریافت شده: {received_text}")
-        
-        # پاسخ دادن
-        await update.message.reply_text(f"متن شما دریافت شد: '{received_text}'")
-    # **************************************************
-
-async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """پاسخ به هر پیام یا دستوری که تعریف نشده است."""
-    await update.message.reply_text("متأسفم، این دستور شناخته نشد.")
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """لاگ کردن هر خطایی که در حین پردازش رخ دهد."""
-    logger.error(f'خطا در پردازش Update: "{update}"، خطا: {context.error}')
-
-
-# --- ۳. تابع اصلی راه‌اندازی (Main Execution) ---
-
-def main() -> None:
-    """شروع به کار ربات و مدیریت استقرار."""
-    
+    # 1. استخراج توکن از متغیر محیطی Render
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
     if not TELEGRAM_TOKEN:
         logger.error("خطا: متغیر محیطی TELEGRAM_TOKEN در Render تنظیم نشده است.")
         return
 
-    # ساخت شیء Application (جایگزین Updater)
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    # 2. ساخت Application با builder 
+    # توجه: این خط، همان خطی است که در اجرای قبلی شما خطا می داد.
+    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # اضافه کردن هندلرها
+    # 3. اضافه کردن هندلرها
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
     
-    # هندل کردن تمام پیام‌های متنی (به جز دستورات که توسط CommandHandler گرفته می‌شوند)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all_text_messages))
+    # --- مثال برای اضافه کردن ConversationHandler (برای ربات های پیچیده) ---
+    # اگر از ربات پیچیده تری مانند رزرو غذا استفاده می کنید، این بخش را فعال کنید:
+    # conv_handler = ConversationHandler(
+    #     entry_points=[CommandHandler("reserve", start_reservation)], # تابع شروع مکالمه
+    #     states={
+    #         RESERVATION_FLOW: [CommandHandler("food", food_choice)],
+    #         FOOD_CHOICE: [CommandHandler("confirm", confirm_reservation)],
+    #     },
+    #     fallbacks=[CommandHandler("cancel", cancel)],
+    # )
+    # application.add_handler(conv_handler)
 
-    # هندل کردن هر چیزی که باقی می‌ماند (برای اطمینان از لاگ شدن خطاها)
-    application.add_handler(MessageHandler(filters.ALL, unknown))
-    
-    # افزودن Error Handler عمومی
-    application.add_error_handler(error_handler)
+    # 4. اجرای پولینگ با سینتکس ناهمزمان (Async) برای رفع مشکل Updater
+    # این مهمترین تغییر برای حل مشکل شماست.
+    logger.info("شروع اجرای ربات از طریق Polling...")
+    await application.run_polling(allowed_updates=Update.ALL_TYPES)
 
-    # اجرای ربات با استفاده از Polling (روش اصلی اجرای ربات)
-    logger.info("ربات در حال شروع به کار (Polling) است...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
-    main()
+    # استفاده از asyncio.run برای اجرای تابع ناهمزمان main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("برنامه با دریافت سیگنال قطع شد (Ctrl+C).")
+    except Exception as e:
+        logger.error(f"یک خطای غیرمنتظره در اجرای اصلی رخ داد: {e}")
