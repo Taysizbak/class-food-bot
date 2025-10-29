@@ -2,7 +2,7 @@ import telebot
 from telebot import types
 
 # 🟢 توکن ربات خودت رو اینجا بذار
-TOKEN = "token inja neveshte shavad"
+TOKEN = "8369904289:AAHciZcymmqwXZdkDMdC9schZsk5gGUVGTQ"
 bot = telebot.TeleBot(TOKEN)
 
 # 📦 ذخیره‌ی اطلاعات کاربران در حافظه
