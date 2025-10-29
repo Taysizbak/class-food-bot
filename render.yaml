@@ -1,6 +1,6 @@
 services:
-  - name: telegram-food-bot
-    type: web
+  - name: my-telegram-bot
+    type: worker
     plan: free # یا پلن مورد نظر شما
     region: predeploy # منطقه را بر اساس نیاز خود تنظیم کنید
     buildCommand: "pip install -r requirements.txt"
@@ -11,3 +11,4 @@ services:
     # در صورت عدم دریافت ترافیک، ممکن است سرویس وارد حالت Sleep شود.
     # برای اجرای بهتر Polling، بهتر است از 'worker' یا تغییر کد به Webhook استفاده شود.
     # فعلاً با فرض اجرای Polling در یک وب سرویس (که ممکن است نیاز به تنظیمات اضافی در محیط داشته باشد) ادامه می‌دهیم.
+
