@@ -1,5 +1,6 @@
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+# -*- coding: utf-8 -*-
+import telebot
+from telebot import types
 import json
 import os
 
